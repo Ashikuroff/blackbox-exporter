@@ -1,0 +1,49 @@
+name: Deploy Blackbox Exporter and Kube Prometheus Stack
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    - name: Set up Kind Kubernetes cluster
+      uses: helm/kind-action@v1.2.0
+      with:
+        cluster_name: kind-cluster
+        config: kind-config.yaml
+
+    - name: Install Helm
+      uses: azure/setup-helm@v3
+      with:
+        version: 'v3.7.1'
+
+    - name: Add Prometheus Community Helm repository
+      run: helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+
+    - name: Update Helm repositories
+      run: helm repo update
+
+    - name: Install Kube Prometheus Stack
+      run: |
+        helm install kube-prometheus-stack prometheus-community/kube-prometheus-stack \
+          --namespace monitoring \
+          --create-namespace \
+          --values helm/prometheus-values.yaml
+
+    - name: Install Blackbox Exporter
+      run: |
+        helm install blackbox-exporter prometheus-community/prometheus-blackbox-exporter \
+          --namespace monitoring \
+          --create-namespace \
+          --values helm/blackbox-values.yaml
+
+    - name: Verify deployments
+      run: |
+        kubectl get pods -n monitoring
