@@ -1,4 +1,4 @@
-name: Prepare Local Setup
+name: Deploy to Local Kind Cluster
 
 on:
   push:
@@ -6,46 +6,60 @@ on:
       - main
 
 jobs:
-  prepare:
-    runs-on: ubuntu-latest
+  deploy-local:
+    runs-on: macos-latest
 
     steps:
     - name: Checkout code
       uses: actions/checkout@v3
 
-    - name: Prepare setup script
+    - name: Create deployment script
       run: |
-        echo '#!/bin/bash' > scripts/setup.sh
-        echo '' >> scripts/setup.sh
-        echo '# Create Kind cluster' >> scripts/setup.sh
-        echo 'kind create cluster --name monitoring-cluster --config kind-config.yaml' >> scripts/setup.sh
-        echo '' >> scripts/setup.sh
-        echo '# Add Helm repositories' >> scripts/setup.sh
-        echo 'helm repo add prometheus-community https://prometheus-community.github.io/helm-charts' >> scripts/setup.sh
-        echo 'helm repo update' >> scripts/setup.sh
-        echo '' >> scripts/setup.sh
-        echo '# Install Kube Prometheus Stack' >> scripts/setup.sh
-        echo 'helm install kube-prometheus-stack prometheus-community/kube-prometheus-stack \' >> scripts/setup.sh
-        echo '  --namespace monitoring \' >> scripts/setup.sh
-        echo '  --create-namespace \' >> scripts/setup.sh
-        echo '  --values helm/prometheus-values.yaml' >> scripts/setup.sh
-        echo '' >> scripts/setup.sh
-        echo '# Install Blackbox Exporter' >> scripts/setup.sh
-        echo 'helm install blackbox-exporter prometheus-community/prometheus-blackbox-exporter \' >> scripts/setup.sh
-        echo '  --namespace monitoring \' >> scripts/setup.sh
-        echo '  --create-namespace \' >> scripts/setup.sh
-        echo '  --values helm/blackbox-values.yaml' >> scripts/setup.sh
-        echo '' >> scripts/setup.sh
-        echo '# Print access information' >> scripts/setup.sh
-        echo 'echo "Prometheus UI: http://localhost:9090"' >> scripts/setup.sh
-        echo 'echo "Blackbox Exporter UI: http://localhost:9115"' >> scripts/setup.sh
-        echo 'echo "Grafana UI: http://localhost:30002 (Username: admin, Password: admin)"' >> scripts/setup.sh
-        chmod +x scripts/setup.sh
+        cat << 'EOF' > deploy-local.sh
+        #!/bin/bash
+        set -e
 
-    - name: Commit and push changes
-      run: |
-        git config --global user.name "Ashikuroff"
-        git config --global user.email "ashik9001@gmail.com"
-        git add scripts/setup.sh
-        git commit -m "Add local setup script"
-        git push
+        # Verify kind cluster
+        if ! kind get clusters | grep -q "kind"; then
+          echo "Kind cluster not found. Please create one first."
+          exit 1
+        fi
+
+        # Add Helm repos
+        helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+        helm repo update
+
+        # Create namespace
+        kubectl create namespace monitoring --dry-run=client -o yaml | kubectl apply -f -
+
+        # Install Prometheus Stack
+        helm upgrade --install prometheus prometheus-community/kube-prometheus-stack \
+          --namespace monitoring \
+          --set grafana.adminPassword=admin \
+          --wait
+
+        # Install Blackbox Exporter
+        helm upgrade --install prometheus-blackbox-exporter prometheus-community/prometheus-blackbox-exporter \
+          --namespace monitoring \
+          --values black-values.yaml \
+          --wait
+
+        # Port forward services
+        echo "Starting port forwards..."
+        kubectl port-forward -n monitoring svc/prometheus-grafana 3000:80 &
+        kubectl port-forward -n monitoring svc/prometheus-operated 9090:9090 &
+        kubectl port-forward -n monitoring svc/prometheus-blackbox-exporter 9115:9115 &
+
+        echo "Access URLs:"
+        echo "Grafana: http://localhost:3000 (admin/admin)"
+        echo "Prometheus: http://localhost:9090"
+        echo "Blackbox Exporter: http://localhost:9115"
+        EOF
+
+        chmod +x deploy-local.sh
+
+    - name: Make script executable
+      run: chmod +x deploy-local.sh
+
+    - name: Deploy to local kind cluster
+      run: ./deploy-local.sh
