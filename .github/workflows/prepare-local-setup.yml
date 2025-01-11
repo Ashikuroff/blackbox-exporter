@@ -1,0 +1,51 @@
+name: Prepare Local Setup
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    - name: Prepare setup script
+      run: |
+        echo '#!/bin/bash' > scripts/setup.sh
+        echo '' >> scripts/setup.sh
+        echo '# Create Kind cluster' >> scripts/setup.sh
+        echo 'kind create cluster --name monitoring-cluster --config kind-config.yaml' >> scripts/setup.sh
+        echo '' >> scripts/setup.sh
+        echo '# Add Helm repositories' >> scripts/setup.sh
+        echo 'helm repo add prometheus-community https://prometheus-community.github.io/helm-charts' >> scripts/setup.sh
+        echo 'helm repo update' >> scripts/setup.sh
+        echo '' >> scripts/setup.sh
+        echo '# Install Kube Prometheus Stack' >> scripts/setup.sh
+        echo 'helm install kube-prometheus-stack prometheus-community/kube-prometheus-stack \' >> scripts/setup.sh
+        echo '  --namespace monitoring \' >> scripts/setup.sh
+        echo '  --create-namespace \' >> scripts/setup.sh
+        echo '  --values helm/prometheus-values.yaml' >> scripts/setup.sh
+        echo '' >> scripts/setup.sh
+        echo '# Install Blackbox Exporter' >> scripts/setup.sh
+        echo 'helm install blackbox-exporter prometheus-community/prometheus-blackbox-exporter \' >> scripts/setup.sh
+        echo '  --namespace monitoring \' >> scripts/setup.sh
+        echo '  --create-namespace \' >> scripts/setup.sh
+        echo '  --values helm/blackbox-values.yaml' >> scripts/setup.sh
+        echo '' >> scripts/setup.sh
+        echo '# Print access information' >> scripts/setup.sh
+        echo 'echo "Prometheus UI: http://localhost:9090"' >> scripts/setup.sh
+        echo 'echo "Blackbox Exporter UI: http://localhost:9115"' >> scripts/setup.sh
+        echo 'echo "Grafana UI: http://localhost:30002 (Username: admin, Password: admin)"' >> scripts/setup.sh
+        chmod +x scripts/setup.sh
+
+    - name: Commit and push changes
+      run: |
+        git config --global user.name "Ashikuroff"
+        git config --global user.email "ashik9001@gmail.com"
+        git add scripts/setup.sh
+        git commit -m "Add local setup script"
+        git push
