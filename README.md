@@ -14,6 +14,23 @@ This repository deploys a local Kubernetes cluster using Kind and installs the K
 - `helm/blackbox-values.yaml`: Custom values for Blackbox Exporter.
 - `helm/prometheus-values.yaml`: Custom values for Kube Prometheus Stack.
 
+## Architecture Diagram
+
+```mermaid
+flowchart TD
+    subgraph Kind Cluster
+        Prometheus
+        BlackboxExporter
+        Grafana
+    end
+    User[(User)]
+    User -- Port Forward --> Prometheus
+    User -- Port Forward --> BlackboxExporter
+    User -- Port Forward --> Grafana
+    Prometheus -- Scrapes --> BlackboxExporter
+    Prometheus -- Data --> Grafana
+```
+
 ## How It Works
 
 1. The GitHub Actions workflow sets up a Kind cluster.
